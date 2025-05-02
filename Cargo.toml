@@ -1,0 +1,30 @@
+[package]
+name = "mimalloc"
+version = "3.0.1"
+edition = "2024"
+description = "Rust bindings for mimalloc v3.0.1"
+repository = "https://git.i.mercedes-benz.com/cda-poc/mimalloc"
+license = "MIT"
+
+exclude = [
+    "mimalloc/bin",
+    "mimalloc/cmake",
+    "mimalloc/doc",
+    "mimalloc/docs",
+    "mimalloc/ide",
+    "mimalloc/test",
+]
+
+[lib]
+name = "mimalloc"
+path = "src/lib.rs"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1.0"
+
+[lints.clippy]
+# enable pedantic
+pedantic = { level = "warn", priority = -1 }
