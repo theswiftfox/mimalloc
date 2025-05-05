@@ -1,4 +1,4 @@
 [submodule "mimalloc"]
 	path = mimalloc
-	url = git@github.com:microsoft/mimalloc.git
+	url = https://github.com/microsoft/mimalloc.git
 	branch = v3.0.1
