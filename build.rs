@@ -53,6 +53,19 @@ fn main() {
         build.flag_if_supported("-march=armv8-a");
     }
 
+    if target_os == "windows" {
+        build.flag("/TP");
+        build.flag("/DWIN32");
+        build.flag("/D_WINDOWS");
+        build.flag("-std:c++17");
+        build.flag("/Zc:__cplusplus");
+        if target_arch == "x86_64" {
+            build.flag("/arch:AVX2");
+        } else if target_arch == "aarch64" {
+            build.flag("/arch:armv8.1");
+        }
+    }
+
     // smaller slices to reduce RSS
     build.define("MI_ARENA_SLICE_SHIFT", "(12 + MI_SIZE_SHIFT)");
 
