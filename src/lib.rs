@@ -1,5 +1,7 @@
 #![no_std]
 
+pub mod options;
+
 #[allow(dead_code)]
 mod ffi {
     use core::ffi::c_void;
