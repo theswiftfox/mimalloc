@@ -8,6 +8,10 @@ fn main() {
     build.include("mimalloc/include");
     build.include("mimalloc/src");
     build.file("mimalloc/src/static.c");
+    // Fails the build if `MiOption` does not match the bundled `mi_option_t`.
+    build.file("src/option_check.c");
+    println!("cargo:rerun-if-changed=src/option_check.c");
+    println!("cargo:rerun-if-changed=mimalloc/include/mimalloc.h");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").expect("target_os not defined!");
     let target_family = env::var("CARGO_CFG_TARGET_FAMILY").expect("target_family not defined!");
