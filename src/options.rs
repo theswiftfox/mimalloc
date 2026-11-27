@@ -2,8 +2,10 @@
 //!
 //! Options can also be set through `MIMALLOC_<OPTION>` environment variables, see the
 //! [mimalloc documentation](https://microsoft.github.io/mimalloc/environment.html).
-//! Some options (e.g. [`MiOption::ArenaEagerCommit`]) are only read when the first arena
-//! is created, so they only take effect when set before the first allocation.
+//! The crate features change some option defaults (see the readme); environment variables and
+//! [`option_set`] take precedence over those.
+//! Some options (e.g. [`MiOption::ArenaEagerCommit`] or [`MiOption::AllowThp`]) are only read when
+//! the process starts or the first arena is created, so setting them later has no effect.
 
 use core::ffi::c_long;
 
@@ -24,7 +26,7 @@ mod ffi {
 /// A mimalloc runtime option, mirroring `mi_option_t` of the bundled mimalloc version.
 ///
 /// The discriminants must match the C enum; this is verified at compile time by
-/// `src/option_check.c`. Deprecated options are omitted.
+/// `src/option_check.c`. Deprecated options are omitted. Sizes are in KiB unless noted.
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -35,11 +37,9 @@ pub enum MiOption {
     ShowStats = 1,
     /// Print verbose messages.
     Verbose = 2,
-    /// Eagerly commit segments (after `EagerCommitDelay` segments).
-    EagerCommit = 3,
-    /// Eagerly commit arenas; 2 enables it only on overcommit systems.
+    /// Eagerly commit arenas; 2 enables it only on overcommit systems (=2).
     ArenaEagerCommit = 4,
-    /// Decommit memory on purge (1) or use memory reset instead (0).
+    /// Decommit memory on purge (1, `MADV_DONTNEED`) or use memory reset instead (0, `MADV_FREE`).
     PurgeDecommits = 5,
     /// Allow large (2 or 4 MiB) OS pages.
     AllowLargeOsPages = 6,
@@ -47,13 +47,9 @@ pub enum MiOption {
     ReserveHugeOsPages = 7,
     /// Reserve huge OS pages at a specific NUMA node.
     ReserveHugeOsPagesAt = 8,
-    /// Reserve the given amount of OS memory (in KiB) in an arena at startup.
+    /// Reserve the given amount of OS memory in an arena at startup.
     ReserveOsMemory = 9,
-    /// Immediately purge delayed purges on thread termination.
-    AbandonedPagePurge = 12,
-    /// The first N segments per thread are not eagerly committed.
-    EagerCommitDelay = 14,
-    /// Delay purging of unused memory by N milliseconds; 0 purges immediately, -1 never.
+    /// Delay purging of unused memory by N milliseconds; 0 purges immediately, -1 never (=1000).
     PurgeDelay = 15,
     /// Use at most N NUMA nodes; 0 uses all available nodes.
     UseNumaNodes = 16,
@@ -65,39 +61,31 @@ pub enum MiOption {
     MaxErrors = 19,
     /// Issue at most N warning messages.
     MaxWarnings = 20,
-    /// Max. percentage of the abandoned segments that can be reclaimed per try.
-    MaxSegmentReclaim = 21,
     /// Release all memory on exit.
     DestroyOnExit = 22,
-    /// Initial memory size (in KiB) for arena reservation.
+    /// Initial memory size for arena reservation (=1 GiB on 64-bit).
     ArenaReserve = 23,
-    /// Multiplier of `PurgeDelay` for purging arenas.
+    /// Multiplier of `PurgeDelay` for purging arenas (=4).
     ArenaPurgeMult = 24,
-    /// Extend the purge delay on each subsequent delayed purge request.
-    PurgeExtendDelay = 25,
     /// Do not use arenas for allocation (except with specific arena ids).
     DisallowArenaAlloc = 26,
     /// Retry on out-of-memory for N milliseconds (Windows only).
     RetryOnOom = 27,
-    /// Allow visiting heap blocks from abandoned threads.
-    VisitAbandoned = 28,
     /// Minimal rounded object size for guarded objects (requires `MI_GUARDED`).
     GuardedMin = 29,
     /// Maximal rounded object size for guarded objects (requires `MI_GUARDED`).
     GuardedMax = 30,
-    /// Always place guarded blocks exactly in front of a guard page.
-    GuardedPrecise = 31,
-    /// Guard 1 out of N allocations in the min/max range.
+    /// Guard an object in the min/max range about every N requested bytes.
     GuardedSampleRate = 32,
     /// Seed for the guarded sampling.
     GuardedSampleSeed = 33,
-    /// Experimental: target number of segments per thread.
-    TargetSegmentsPerThread = 34,
-    /// Allow reclaiming an abandoned segment on a free.
-    ReclaimOnFree = 35,
-    /// Retain N full pages per size class.
+    /// Collect thread-local heaps every N generic allocation calls (=10000).
+    GenericCollect = 34,
+    /// Reclaim abandoned pages on free: -1 never, 0 into the originating heap only, 1 across heaps.
+    PageReclaimOnFree = 35,
+    /// Retain N full pages per size class (=2).
     PageFullRetain = 36,
-    /// Max. number of candidate pages to consider for allocation.
+    /// Max. number of candidate pages to consider for allocation (=4).
     PageMaxCandidates = 37,
     /// Max. user space virtual address bits to consider.
     MaxVabits = 38,
@@ -105,6 +93,34 @@ pub enum MiOption {
     PagemapCommit = 39,
     /// Commit page memory on demand.
     PageCommitOnDemand = 40,
+    /// Do not reclaim pages of the originating heap if it already owns N pages of that size class (=-1, unlimited).
+    PageMaxReclaim = 41,
+    /// Do not reclaim pages across threads if the heap already owns N pages of that size class (=32).
+    PageCrossThreadMaxReclaim = 42,
+    /// Transparent huge pages: 0 disabled for the process, 1 allowed, 2 allowed and never split on purge.
+    AllowThp = 43,
+    /// Minimal purge size; 0 selects 64 KiB, or 2 MiB with `AllowThp` 2.
+    ArenaPurgeMinSize = 44,
+    /// Maximal object size allocated in an arena (=2 GiB on 64-bit).
+    ArenaMaxObjectSize = 45,
+    /// Experimental: associate the local NUMA node with an initial arena allocation.
+    ArenaIsNumaLocal = 46,
+    /// Merge thread-local statistics into the heap on each collection.
+    StatsMergeOnCollect = 47,
+    /// Bytes allocated between automatic heap profiler snapshots (=1 GiB).
+    ProfileAllocInterval = 48,
+    /// Bytes of in-use growth between automatic heap profiler snapshots (=0, disabled).
+    ProfileInuseInterval = 49,
+    /// Seconds between automatic heap profiler snapshots (=0, disabled).
+    ProfileTimeInterval = 50,
+    /// Sample rate in bytes of the heap profiler (=512 KiB).
+    ProfileSampleRate = 51,
+    /// Merge thread-local statistics after N bytes were allocated or freed; 0 disables (=4 MiB).
+    StatsMergeThreshold = 52,
+    /// Purge freed ranges above this size immediately (=32 MiB).
+    ArenaPurgeImmediateSize = 53,
+    /// Use memory tagging (MTE) if available and enabled at build time.
+    Mte = 54,
 }
 
 impl MiOption {
@@ -127,7 +143,7 @@ pub fn option_set(option: MiOption, value: c_long) {
 
 /// Sets the default of `option`; a value from the environment still takes precedence.
 ///
-/// Has no effect if the option was already read or set.
+/// Has no effect if the option was set explicitly or through the environment.
 pub fn option_set_default(option: MiOption, value: c_long) {
     unsafe { ffi::mi_option_set_default(option.raw(), value) }
 }
@@ -160,12 +176,13 @@ pub fn collect(force: bool) {
 mod tests {
     use super::*;
 
+    // (not `PurgeDelay`, whose feature default is checked concurrently in `lib.rs`)
     #[test]
     fn option_set_and_get() {
-        let previous = option_get(MiOption::PurgeDelay);
-        option_set(MiOption::PurgeDelay, 42);
-        assert_eq!(option_get(MiOption::PurgeDelay), 42);
-        option_set(MiOption::PurgeDelay, previous);
+        let previous = option_get(MiOption::MaxWarnings);
+        option_set(MiOption::MaxWarnings, 42);
+        assert_eq!(option_get(MiOption::MaxWarnings), 42);
+        option_set(MiOption::MaxWarnings, previous);
     }
 
     #[test]

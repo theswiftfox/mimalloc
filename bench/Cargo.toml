@@ -1,0 +1,23 @@
+[package]
+name = "mimalloc-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# standalone: not part of the `mimalloc` package
+[workspace]
+
+[features]
+default = ["mimalloc"]
+# forwarded to the `mimalloc` crate, e.g. `--features mimalloc/throughput`
+system = []
+
+[dependencies]
+mimalloc = { path = "..", optional = true }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = false

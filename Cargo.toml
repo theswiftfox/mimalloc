@@ -1,29 +1,77 @@
 [package]
 name = "mimalloc"
-version = "3.0.1"
+version = "3.7.1"
 edition = "2024"
-description = "Rust bindings for mimalloc v3.0.1"
+rust-version = "1.85"
+description = "Rust bindings for mimalloc v3.7.1, tunable for throughput or memory usage"
 repository = "https://git.i.mercedes-benz.com/cda-poc/mimalloc"
 license = "MIT"
 
-exclude = [
-    "mimalloc/bin",
-    "mimalloc/cmake",
-    "mimalloc/doc",
-    "mimalloc/docs",
-    "mimalloc/ide",
-    "mimalloc/test",
+include = [
+    "/src",
+    "/build.rs",
+    "/Readme.md",
+    "/LICENSE.md",
+    "/mimalloc/LICENSE",
+    "/mimalloc/include",
+    "/mimalloc/src",
 ]
 
 [lib]
 name = "mimalloc"
 path = "src/lib.rs"
 
-[dependencies]
-libc = "0.2"
+[features]
+default = []
+
+# Presets (pick at most one).
+# Maximal throughput: no statistics or profiling hooks, never split huge pages, lazy purging.
+throughput = ["no_stats", "no_profile", "thp_full", "purge_lazy"]
+# Minimal memory overhead: no transparent huge pages, smaller pages, eager purging.
+low_memory = ["no_thp", "small_pages", "purge_eager"]
+
+# CPU overhead.
+# Do not maintain detailed allocator statistics (`mimalloc::stats_print` shows only the essential counters).
+no_stats = []
+# Compile out the sampling heap profiler (`MIMALLOC_PROFILE`) hooks.
+no_profile = []
+# Use inline LSE atomics (`-march=armv8.1-a`) instead of runtime dispatched atomics; needs an armv8.1+ CPU.
+armv8_1 = []
+# As `armv8_1` with `-march=armv8.2-a` (Cortex-A55/A75/A76/A78, Neoverse N1+, Graviton2+, ...).
+armv8_2 = []
+# Compile mimalloc to LLVM bitcode so its fast paths can be inlined into Rust code (needs clang with
+# the same LLVM version as rustc, and `-Clinker-plugin-lto` with lld for the final binary; see the readme).
+cross_lang_lto = []
+
+# Memory overhead.
+# By default, transparent huge pages (THP) follow the system policy (`/sys/kernel/mm/transparent_hugepage`).
+# Disable THP for the whole process (lowest rss, more TLB misses; also affects non-mimalloc memory).
+no_thp = []
+# Opt in to THP even if the system policy is `madvise` (fewer TLB misses, up to 3x rss with many threads).
+thp = []
+# As `thp`, and never split huge pages when purging (fewest TLB misses, much higher rss).
+thp_full = []
+# Use 32 KiB instead of 64 KiB pages for small objects (slightly lower rss, slower).
+small_pages = []
+# Return unused memory to the OS after 100 ms instead of 1 s (4 s for arenas).
+purge_eager = []
+# Return unused memory to the OS after 10 s instead of 1 s (40 s for arenas).
+purge_lazy = []
+
+# Other build options.
+# Also override the standard `malloc`, `free`, etc. in the final binary.
+override = []
+# Security mitigations (`MI_SECURE=4`); costs throughput and memory.
+secure = []
+# Use the local-dynamic TLS model (when the allocator is in a `dlopen`ed library).
+local_dynamic_tls = []
+# Build mimalloc with assertions and internal invariant checks.
+debug = []
+# As `debug`, but only when `debug_assertions` are enabled.
+debug_in_debug = []
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.2"
 
 [lints.clippy]
 # enable pedantic
